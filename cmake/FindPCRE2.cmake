@@ -53,6 +53,17 @@ if(SSPLIT_USE_INTERNAL_PCRE2)
     -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=true # Added for pybind11
     )
 
+  # Android platform needs to be explicitly passed given this is an external project.
+  # If not supplied armv8-a switches into armv7-a, making the compiled library
+  # incompatible with an upstream bergamot-translator.
+  if(ANDROID)
+    LIST(APPEND PCRE2_CONFIGURE_OPTIONS 
+      -DANDROID_PLATFORM=${ANDROID_PLATFORM} 
+      -DANDROID_ABI=${ANDROID_ABI}
+    )
+  endif(ANDROID)
+
+
   # set include dirs and libraries for PCRE2
   set(PCRE2_LIBRARIES ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}pcre2-8${CMAKE_STATIC_LIBRARY_SUFFIX})
   set(PCRE2_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/include")
