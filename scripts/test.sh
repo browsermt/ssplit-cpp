@@ -9,21 +9,27 @@ if [ -z ${BINARY_DIR+UNSET} ]; then
 fi
 
 function evaluate-diff {
-    NAME=$1
-    MODE=$2
-    FSUFFIX=$3
-    ADDITIONAL_ARGS=$4
+    LANGUAGE=$1
+    NAME=$2
+    MODE=$3
+    FSUFFIX=$4
+    ADDITIONAL_ARGS=$5
 
     echo "Testing $NAME mode of operation";
 
     BASE_ARGS=(
         -m${MODE} -n 
-        -p nonbreaking_prefixes/nonbreaking_prefix.en 
         ${ADDITIONAL_ARGS[@]} 
     )
 
-    INPUT_FILE="tests/sample.en${FSUFFIX}"
-    EXPECTED_OUTPUT="tests/sample.en${FSUFFIX}.m${MODE}.n.expected"
+    if [ -f nonbreaking_prefixes/nonbreaking_prefix.$LANGUAGE ]; then
+        BASE_ARGS+=(
+            -p nonbreaking_prefixes/nonbreaking_prefix.${LANGUAGE} 
+        )
+    fi
+
+    INPUT_FILE="tests/sample.${LANGUAGE}${FSUFFIX}"
+    EXPECTED_OUTPUT="tests/sample.${LANGUAGE}${FSUFFIX}.m${MODE}.n.expected"
 
     diff -qa <(${BINARY_DIR}/ssplit ${BASE_ARGS[@]} ${INPUT_FILE}) ${EXPECTED_OUTPUT} || (echo " - [FAIL] mapped ${NAME} mode " && return 1); 
     echo " - [SUCCESS] mapped ${NAME} mode";
@@ -35,12 +41,24 @@ function evaluate-diff {
 
 echo "File based loads"
 ADDITIONAL_ARGS=""
-evaluate-diff "paragraph" "p" "" ${ADDITIONAL_ARGS}
-evaluate-diff "sentence" "s" "" ${ADDITIONAL_ARGS}
-evaluate-diff "wrapped" "w" ".wrapped" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "paragraph" "p" "" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "sentence" "s" "" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "wrapped" "w" ".wrapped" ${ADDITIONAL_ARGS}
 
 echo "ByteArray based loads"
 ADDITIONAL_ARGS="--byte-array=1"
-evaluate-diff "paragraph" "p" "" ${ADDITIONAL_ARGS}
-evaluate-diff "sentence" "s" "" ${ADDITIONAL_ARGS}
-evaluate-diff "wrapped" "w" ".wrapped" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "paragraph" "p" "" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "sentence" "s" "" ${ADDITIONAL_ARGS}
+evaluate-diff "en" "wrapped" "w" ".wrapped" ${ADDITIONAL_ARGS}
+
+echo "Armenian"
+ADDITIONAL_ARGS=""
+evaluate-diff "hy" "paragraph" "p" "" ${ADDITIONAL_ARGS}
+
+echo "Chinese"
+ADDITIONAL_ARGS=""
+evaluate-diff "zh" "paragraph" "p" "" ${ADDITIONAL_ARGS}
+
+echo "Japanese"
+ADDITIONAL_ARGS=""
+evaluate-diff "jp" "paragraph" "p" "" ${ADDITIONAL_ARGS}

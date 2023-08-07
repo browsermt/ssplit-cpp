@@ -135,30 +135,33 @@ operator()(string_view* rest) const {
   // The chunker is the first step in sentence splitting.
   // It identifies candidate split points.
   //
-  // Regarding \p{Xan} below, see
-  // https://www.pcre.org/current/doc/html/pcre2syntax.html#SEC6
-  static Regex Chunker_RE("\\s*" // whitespace
-                          "[^.?!]*?" // non alphanumeric stuff
-                          "(\\p{Xan}*)" // alphanumeric prefix of potential EOS marker
-                          "([.?!]++)" // the potential EOS marker
-                          "(" // open group for trailing matter
-                          "['\")\\]’”\\p{Pf}]*" // any "trailing matter"
-                          "(?:\\[[\\p{Nd}]+[\\p{Nd},\\s]*[\\p{Nd}]\\])?" // footnote?
-                          "['\")\\]’”\\p{Pf}]*" // any more "trailing matter"
-                          ")" // close group for trailing matter
-                          "(\\s*)" // whitespace after
-                          "(?=" // start look-ahead
-                          "([^\\s\\p{L}\\p{N}\\p{M}\\p{S}]*)" // sentence-initial punct.
-                          "\\s*" // whitespace
-                          "([\\p{L}\\p{M}\\p{N}]*)" // leading letters or digits
-                          ")" // close look-ahead
-                          , PCRE2_UTF|PCRE2_DOTALL|PCRE2_NEWLINE_ANY);
+  // Regarding \p{} below, see
+  // https://www.pcre.org/current/doc/html/pcre2syntax.html#SEC5
+  static Regex Chunker_RE(
+      "\\s*"                                          // whitespace
+      "[^.?!։。？！]*?"                               // non alphanumeric stuff
+      "([\\p{L}\\p{Lo}\\p{N}]*)"                      // 1: alphanumeric prefix of potential EOS marker
+      "([.?!։。？！]++)"                              // 2: the potential EOS marker
+      "("                                             // 3: open group for trailing matter
+      "['\")\\]’”\\p{Pf}]*"                           // any "trailing matter"
+      "(?:\\[[\\p{Nd}]+[\\p{Nd},\\s]*[\\p{Nd}]\\])?"  // footnote?
+      "['\")\\]’”\\p{Pf}]*"                           // any more "trailing matter"
+      ")"                                             // 3: close group for trailing matter
+      "(\\s*)"                                        // 4: whitespace after
+      "(?="                                           // start look-ahead
+      "([^\\s\\p{L}\\p{Lo}\\p{N}\\p{M}\\p{S}]*)"      // 5: sentence-initial punct.
+      "\\s*"                                          // whitespace
+      "([\\p{L}\\p{Lo}\\p{M}\\p{N}]*)"                // 6: leading letters or digits
+      ")"                                             // close look-ahead
+      ,
+      PCRE2_UTF | PCRE2_DOTALL | PCRE2_NEWLINE_ANY);
 
   // The following patterns are used to make heuristic decisions once a
   // potential split point has been identified.
   static const Regex lowercase("\\p{M}*\\p{Ll}", PCRE2_NO_UTF_CHECK);
   static Regex uppercase("\\p{M}*[\\p{Lu}\\p{Lt}]", PCRE2_NO_UTF_CHECK);
   static Regex digit("[\\p{Nd}\\p{Nl}]", PCRE2_NO_UTF_CHECK);
+  static Regex letterother("\\p{M}*[\\p{Lo}]", PCRE2_NO_UTF_CHECK | PCRE2_UTF);
 
   // We need these to store match results:
   thread_local static Match Whitespace_M(Whitespace_RE);
@@ -166,6 +169,8 @@ operator()(string_view* rest) const {
   thread_local static Match lowercase_M(lowercase);
   thread_local static Match uppercase_M(uppercase);
   thread_local static Match digit_M(digit);
+
+  thread_local static Match letterother_M(letterother);
 
   int success; /* stores the return value of pcre2_match() which is
                 * called in Regex::find() / Regex::consume() */
@@ -184,37 +189,34 @@ operator()(string_view* rest) const {
     auto inipunct         = Chunker_M[5]; // following symbols (not letters/digits)
     auto following_symbol = Chunker_M[6]; // first letter or digit after whitespace
 
-    /* FOR DEBUGGING
-    std::cout << prefix << "|"
-              << punct << "|"
-              << tail << "|"
-              << whitespace_after <<"|"
-              << inipunct << "|"
-              << following_symbol << std::endl;
-    */
+    // FOR DEBUGGING
+    // std::cerr << "DEBUG\n" << prefix << "|"
+    //           << punct << "|"
+    //           << tail << "|"
+    //           << whitespace_after <<"|"
+    //           << inipunct << "|"
+    //           << following_symbol << std::endl;
 
-    if (whitespace_after.size() == 0) {
-      // this candidate is not followed by whitespace
+    // whitespace not required after ideographic full widths
+    if (whitespace_after.size() == 0 && !(punct == "。" || punct == "！" || punct == "？")) {
       continue;
-    }
-    else if (lowercase.find(following_symbol, &lowercase_M, 0, PCRE2_ANCHORED) > 0) {
+    } else if (letterother.find(following_symbol, &letterother_M, 0, PCRE2_ANCHORED) > 0) {
+      // Finding a letterother is not cause for a non-break; (i.e we omit continue)
+    } else if (lowercase.find(following_symbol, &lowercase_M, 0, PCRE2_ANCHORED) > 0) {
       // followed by lower case
       continue;
-    }
-    else if (uppercase.find(following_symbol, &uppercase_M, 0, PCRE2_ANCHORED) > 0) {
+    } else if (uppercase.find(following_symbol, &uppercase_M, 0, PCRE2_ANCHORED) > 0) {
       // followed by uppercase
       if (punct == "." && get_prefix_class(prefix) != 0) // preceded by nonbreaking prefix
         continue;
       if (punct.size() == 1 && *snt_end == '.') // preceded by abbreviation a.b.c
         continue;
-    }
-    else if (digit.find(following_symbol, &digit_M, 0, PCRE2_ANCHORED) > 0) {
+    } else if (digit.find(following_symbol, &digit_M, 0, PCRE2_ANCHORED) > 0) {
       // std::cout << "Digit" << std::endl;
       // followed by digit
       if (punct == "." && get_prefix_class(prefix) == 2) // preceded by nonbreaking prefix
         continue;
-    }
-    else {
+    } else {
       // check for in-text ellipsis "[...]"
       if (punct == "..."
           && (punct.data() - whole_match.data() > 1) // not at the beginning
